@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { getDepartments, updateTokenStatus } from '../firebase/firestore';
 import { registerWithEmail } from '../firebase/auth';
 import { format, subDays, addDays } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
+
+const FRESH_DEPARTMENTS = [
+    { department_name: 'RTO Office', office_location: 'Regional Transport Office, Anna Salai, Chennai', subdivisions: ['New Vehicle Registration', 'Driving Licence (Fresh)', 'Driving Licence Renewal', 'RC Transfer / Ownership Change', 'NOC (No Objection Certificate)', 'Pollution Certificate (PUC)', 'Hypothecation Addition / Removal'] },
+    { department_name: 'Revenue Office', office_location: 'District Collectorate, Rajaji Salai, Chennai', subdivisions: ['Patta / Chitta (Land Records)', 'Birth Certificate', 'Death Certificate', 'Income Certificate', 'Community Certificate', 'Nativity Certificate', 'Legal Heir Certificate'] },
+    { department_name: 'Municipal Corporation', office_location: 'Ripon Building, Park Town, Chennai', subdivisions: ['Property Tax Payment', 'Trade Licence', 'Building Plan Approval', 'Water & Sewerage Connection', 'Birth / Death Certificate', 'Encumbrance Certificate'] },
+    { department_name: 'Passport Seva Kendra', office_location: 'PSK Chennai, Kathipara Junction, Guindy', subdivisions: ['Fresh Passport Application', 'Tatkal Passport', 'Passport Renewal', 'Police Clearance Certificate (PCC)', 'Passport for Minor'] },
+    { department_name: 'Aadhaar Centre (UIDAI)', office_location: 'UIDAI Office, Haddows Road, Nungambakkam', subdivisions: ['New Aadhaar Enrolment', 'Address Update', 'Mobile Number Update', 'Biometric Update', 'Name / DOB Correction', 'Aadhaar Card Reprint'] },
+    { department_name: 'Employment Office', office_location: 'District Employment Office, Egmore, Chennai', subdivisions: ['New Job Registration', 'Registration Renewal', 'Employment Certificate', 'Job Fair Participation', 'Skill Development Enquiry'] },
+    { department_name: 'Ration Shop (PDS)', office_location: 'Taluk Supply Office, Purasaiwakkam, Chennai', subdivisions: ['New Ration Card Application', 'Card Correction / Update', 'Member Addition / Removal', 'Surrender of Ration Card', 'Duplicate Card Request', 'Category Change (BPL / APL / AAY)'] },
+];
 
 const SLOT_TIMES = [
     '09:00 AM - 09:30 AM', '09:30 AM - 10:00 AM', '10:00 AM - 10:30 AM',
@@ -41,6 +51,10 @@ const AdminDashboard = () => {
     // ── Departments tab state ────────────────────────────────────────────────
     const [deptForm, setDeptForm] = useState({ department_name: '', office_location: '' });
     const [savingDept, setSavingDept] = useState(false);
+    // In-app confirm modal (replaces window.confirm which Vite HMR steals focus from)
+    const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
+    const showConfirm = (title, message, onConfirm) => setConfirmModal({ show: true, title, message, onConfirm });
+    const closeConfirm = () => setConfirmModal({ show: false, title: '', message: '', onConfirm: null });
 
     // ── Slots tab state ──────────────────────────────────────────────────────
     const [slotDept, setSlotDept] = useState('');
@@ -129,6 +143,35 @@ const AdminDashboard = () => {
     }, [slotDept, slotDate, activeTab]);
 
     // ── Handlers ─────────────────────────────────────────────────────────────
+    const handleCleanReseed = async () => {
+        showConfirm(
+            'Clean & Re-seed Departments',
+            'This will DELETE all existing departments and re-seed 7 standard Tamil Nadu departments with sub-divisions. Existing slots linked to old departments will become orphaned. Continue?',
+            async () => {
+                setSavingDept(true);
+                try {
+                    // Delete all existing departments
+                    const snap = await getDocs(collection(db, 'departments'));
+                    const batch = writeBatch(db);
+                    snap.docs.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+
+                    // Re-seed fresh departments
+                    const newDepts = [];
+                    for (const dept of FRESH_DEPARTMENTS) {
+                        const ref = await addDoc(collection(db, 'departments'), { ...dept, isActive: true, createdAt: serverTimestamp() });
+                        newDepts.push({ id: ref.id, ...dept, isActive: true });
+                    }
+                    setDepartments(newDepts);
+                    toast.success(`✅ Cleaned & re-seeded ${newDepts.length} departments!`);
+                } catch (err) {
+                    toast.error('Failed: ' + err.message);
+                } finally {
+                    setSavingDept(false);
+                }
+            });
+    };
+
     const handleStatus = async (token, status) => {
         try {
             await updateTokenStatus(token.id, status);
@@ -158,12 +201,17 @@ const AdminDashboard = () => {
     };
 
     const handleDeleteDept = async (id) => {
-        if (!window.confirm('Delete this department?')) return;
-        try {
-            await deleteDoc(doc(db, 'departments', id));
-            setDepartments(prev => prev.filter(d => d.id !== id));
-            toast.success('Deleted');
-        } catch { toast.error('Delete failed'); }
+        showConfirm(
+            'Delete Department',
+            'Are you sure you want to delete this department? This cannot be undone.',
+            async () => {
+                try {
+                    await deleteDoc(doc(db, 'departments', id));
+                    setDepartments(prev => prev.filter(d => d.id !== id));
+                    toast.success('Deleted');
+                } catch { toast.error('Delete failed'); }
+            }
+        );
     };
 
     const handleAddSlots = async () => {
@@ -400,8 +448,12 @@ service cloud.firestore {
 
                     <div className="lg:col-span-2">
                         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-2">
                                 <h2 className="font-bold text-gov-navy">All Departments ({departments.length})</h2>
+                                <button onClick={handleCleanReseed} disabled={savingDept}
+                                    className="text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 disabled:bg-gray-50 disabled:text-gray-400 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                    {savingDept ? '⏳ Working...' : '🧹 Clean & Re-seed Departments'}
+                                </button>
                             </div>
                             <div className="divide-y divide-gray-50">
                                 {departments.map(d => (
@@ -409,6 +461,9 @@ service cloud.firestore {
                                         <div>
                                             <p className="font-medium text-gov-navy text-sm">{d.department_name}</p>
                                             <p className="text-gray-400 text-xs mt-0.5">📍 {d.office_location}</p>
+                                            {d.subdivisions?.length > 0 && (
+                                                <p className="text-blue-400 text-xs mt-0.5">{d.subdivisions.length} services</p>
+                                            )}
                                             <span className={`text-xs font-medium ${d.isActive ? 'text-green-600' : 'text-gray-400'}`}>
                                                 {d.isActive ? '● Active' : '○ Inactive'}
                                             </span>
@@ -549,6 +604,32 @@ service cloud.firestore {
                             <p>No booking data in the last 7 days.</p>
                         </div>
                     )}
+                </div>
+            )}
+            {/* ── In-App Confirm Modal (replaces window.confirm) ──────────────── */}
+            {confirmModal.show && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 max-w-md w-full animate-slide-up">
+                        <div className="flex items-start gap-3 mb-4">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                                <span className="text-red-600 text-lg">⚠️</span>
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gov-navy text-base">{confirmModal.title}</h3>
+                                <p className="text-gray-500 text-sm mt-1">{confirmModal.message}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={closeConfirm}
+                                className="px-5 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-medium transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={() => { confirmModal.onConfirm?.(); closeConfirm(); }}
+                                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

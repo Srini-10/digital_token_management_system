@@ -12,6 +12,7 @@ import {
     onSnapshot,
     runTransaction,
     serverTimestamp,
+    writeBatch
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 
@@ -81,6 +82,13 @@ export const deleteDepartment = async (id) => {
 // SLOTS
 // ─────────────────────────────────────────────
 
+const DEFAULT_SLOT_TIMES = [
+    '09:00 AM - 09:30 AM', '09:30 AM - 10:00 AM', '10:00 AM - 10:30 AM',
+    '10:30 AM - 11:00 AM', '11:00 AM - 11:30 AM', '11:30 AM - 12:00 PM',
+    '01:00 PM - 01:30 PM', '01:30 PM - 02:00 PM', '02:00 PM - 02:30 PM',
+    '02:30 PM - 03:00 PM', '03:00 PM - 03:30 PM', '03:30 PM - 04:00 PM',
+];
+
 export const getSlotsForDepartmentDate = async (departmentId, date) => {
     const q = query(
         collection(db, 'slots'),
@@ -88,6 +96,32 @@ export const getSlotsForDepartmentDate = async (departmentId, date) => {
         where('date', '==', date)
     );
     const snap = await getDocs(q);
+
+    // If no slots exist for this date, AUTO-GENERATE them instantly
+    if (snap.empty) {
+        console.log(`No slots found for ${date}. Auto-generating default slots...`);
+        const batch = writeBatch(db);
+        const newSlots = [];
+
+        DEFAULT_SLOT_TIMES.forEach(time => {
+            const slotRef = doc(collection(db, 'slots'));
+            const slotData = {
+                department_id: departmentId,
+                date: date,
+                slot_time: time,
+                max_tokens: 10,
+                booked_count: 0,
+                isBlocked: false,
+                createdAt: serverTimestamp()
+            };
+            batch.set(slotRef, slotData);
+            newSlots.push({ id: slotRef.id, ...slotData });
+        });
+
+        await batch.commit();
+        return newSlots; // return newly created slots to the UI
+    }
+
     // Sort client-side — avoids needing a composite index
     return snap.docs
         .map(d => ({ id: d.id, ...d.data() }))

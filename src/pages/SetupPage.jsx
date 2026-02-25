@@ -5,12 +5,90 @@ import { auth, db } from '../firebase/firebaseConfig';
 import { useNavigate } from 'react-router-dom';
 
 const DEPARTMENTS = [
-    { department_name: 'RTO Office', office_location: 'Regional Transport Office, Anna Salai, Chennai', code: 'RTO' },
-    { department_name: 'Revenue Office', office_location: 'District Collectorate, Rajaji Salai, Chennai', code: 'REV' },
-    { department_name: 'Municipal Office', office_location: 'Ripon Building, Park Town, Chennai', code: 'MUN' },
-    { department_name: 'Passport Seva', office_location: 'PSK Chennai, Kathipara Junction, Guindy', code: 'PSP' },
-    { department_name: 'Aadhaar Centre', office_location: 'UIDAI Office, Haddows Road, Nungambakkam', code: 'ADH' },
-    { department_name: 'Employment Office', office_location: 'District Employment Office, Egmore, Chennai', code: 'EMP' },
+    {
+        department_name: 'RTO Office',
+        office_location: 'Regional Transport Office, Anna Salai, Chennai',
+        subdivisions: [
+            'New Vehicle Registration',
+            'Driving Licence (Fresh)',
+            'Driving Licence Renewal',
+            'RC Transfer / Ownership Change',
+            'NOC (No Objection Certificate)',
+            'Pollution Certificate (PUC)',
+            'Hypothecation Addition / Removal',
+        ],
+    },
+    {
+        department_name: 'Revenue Office',
+        office_location: 'District Collectorate, Rajaji Salai, Chennai',
+        subdivisions: [
+            'Patta / Chitta (Land Records)',
+            'Birth Certificate',
+            'Death Certificate',
+            'Income Certificate',
+            'Community Certificate',
+            'Nativity Certificate',
+            'Legal Heir Certificate',
+        ],
+    },
+    {
+        department_name: 'Municipal Corporation',
+        office_location: 'Ripon Building, Park Town, Chennai',
+        subdivisions: [
+            'Property Tax Payment',
+            'Trade Licence',
+            'Building Plan Approval',
+            'Water & Sewerage Connection',
+            'Birth / Death Certificate',
+            'Encumbrance Certificate',
+        ],
+    },
+    {
+        department_name: 'Passport Seva Kendra',
+        office_location: 'PSK Chennai, Kathipara Junction, Guindy',
+        subdivisions: [
+            'Fresh Passport Application',
+            'Tatkal Passport',
+            'Passport Renewal',
+            'Police Clearance Certificate (PCC)',
+            'Passport for Minor',
+        ],
+    },
+    {
+        department_name: 'Aadhaar Centre (UIDAI)',
+        office_location: 'UIDAI Office, Haddows Road, Nungambakkam',
+        subdivisions: [
+            'New Aadhaar Enrolment',
+            'Address Update',
+            'Mobile Number Update',
+            'Biometric Update',
+            'Name / DOB Correction',
+            'Aadhaar Card Reprint',
+        ],
+    },
+    {
+        department_name: 'Employment Office',
+        office_location: 'District Employment Office, Egmore, Chennai',
+        subdivisions: [
+            'New Job Registration',
+            'Registration Renewal',
+            'Employment Certificate',
+            'Job Fair Participation',
+            'Skill Development Enquiry',
+        ],
+    },
+    {
+        department_name: 'Ration Shop (PDS)',
+        office_location: 'Taluk Supply Office, Purasaiwakkam, Chennai',
+        subdivisions: [
+            'New Ration Card Application',
+            'Card Correction / Update',
+            'Member Addition / Removal',
+            'Surrender of Ration Card',
+            'Duplicate Card Request',
+            'Category Change (BPL / APL / AAY)',
+        ],
+    },
 ];
 
 const SLOT_TIMES = [
