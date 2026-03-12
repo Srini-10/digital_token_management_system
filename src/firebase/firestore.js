@@ -285,6 +285,78 @@ export const updateTokenStatus = async (tokenId, status) => {
     });
 };
 
+/**
+ * Parse the start time from a slot string like "09:00 AM - 09:30 AM"
+ * Returns minutes since midnight for easy numeric comparison.
+ */
+const parseSlotStartMinutes = (slotTime) => {
+    if (!slotTime) return Infinity; // push tokens without slot_time to the end
+    // Extract the start portion: "09:00 AM" from "09:00 AM - 09:30 AM"
+    const start = slotTime.split(' - ')[0]?.trim();
+    if (!start) return Infinity;
+
+    const match = start.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return Infinity;
+
+    let hours = parseInt(match[1], 10);
+    const mins = parseInt(match[2], 10);
+    const period = match[3].toUpperCase();
+
+    if (period === 'AM' && hours === 12) hours = 0;
+    if (period === 'PM' && hours !== 12) hours += 12;
+
+    return hours * 60 + mins;
+};
+
+/**
+ * Call the next pending token in the queue.
+ * Always uses the current date. Sorts by slot time (earliest first),
+ * then by createdAt within the same slot so the queue order matches
+ * the citizen's booked time window.
+ * Returns null if no pending tokens exist.
+ */
+export const callNextToken = async (date = null, departmentId = null) => {
+    // Always enforce current date
+    const today = new Date();
+    const currentDate = date || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const constraints = [
+        where('booking_date', '==', currentDate),
+        where('status', '==', 'pending'),
+    ];
+    if (departmentId) {
+        constraints.push(where('department_id', '==', departmentId));
+    }
+
+    const q = query(collection(db, 'tokens'), ...constraints);
+    const snap = await getDocs(q);
+
+    if (snap.empty) return null;
+
+    // Sort by: 1) slot_time earliest first  2) createdAt oldest first (within same slot)
+    const pending = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+            const slotA = parseSlotStartMinutes(a.slot_time);
+            const slotB = parseSlotStartMinutes(b.slot_time);
+            if (slotA !== slotB) return slotA - slotB;
+            // Same slot — respect booking order
+            const ta = a.createdAt?.toMillis?.() ?? 0;
+            const tb = b.createdAt?.toMillis?.() ?? 0;
+            return ta - tb;
+        });
+
+    const next = pending[0];
+
+    // Update status to 'called'
+    await updateDoc(doc(db, 'tokens', next.id), {
+        status: 'called',
+        updatedAt: serverTimestamp(),
+    });
+
+    return { ...next, status: 'called' };
+};
+
 /** Cancel a token and decrement slot count */
 export const cancelToken = async (tokenId, slotId) => {
     const tokenRef = doc(db, 'tokens', tokenId);

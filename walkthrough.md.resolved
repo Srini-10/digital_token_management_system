@@ -1,0 +1,320 @@
+# Pharmacy Management System — Comprehensive Testing Report
+
+> **Date**: March 5, 2026  
+> **Testing Method**: Static analysis (`dart analyze`) + deep manual code review  
+> **Flutter SDK**: 3.27.3 (macOS permission issue prevented live runtime testing)  
+> **Apps Tested**: Admin, User, Outlet, POS, Delivery Partner, Super Admin
+
+---
+
+## Static Analysis Summary
+
+| App | Total Issues | Errors | Warnings | Info (Deprecations) |
+|-----|-------------|--------|----------|-------------------|
+| **Admin** | 2,756 | ~255 | ~0 | ~2,501 |
+| **User** | 1,931 | ~190 | ~0 | ~1,741 |
+| **Outlet** | 2,018 | ~221 | ~0 | ~1,797 |
+| **POS** | 1,411 | ~272 | ~0 | ~1,139 |
+| **Delivery Partner** | 1,038 | ~81 | ~0 | ~957 |
+| **Super Admin** | 2,755 | ~261 | ~0 | ~2,494 |
+
+> [!NOTE]
+> Error counts are inflated due to `dart analyze` (not `flutter analyze`) being unable to resolve Flutter framework imports. True compile errors are a subset. Deprecation warnings (~info) are real and actionable.
+
+---
+
+## 🔴 Application 1: Admin App
+
+### Modules Reviewed
+`auth` · `dashboard` · `inventory` · `orders` · `outlets` · `vendors` · `financial` · `banners` · `refunds` · `subscription` · `settings` · `terminals` · `promo_codes` · `offers` · `users` · `permissions` · `activity_log` · `drivers` · `product_analytics` · `customer_analytics` · `kyc_documents`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🔴 Critical | [main.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/main.dart#L11-L13) | **Hardcoded Supabase credentials** — URL and anon key are embedded in source code as fallback constants. If committed to a public repo, this exposes the backend. |
+| 2 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/auth/view/login_view.dart#L126-L128) | **Weak email validation** — Only checks `contains('@')`. Accepts invalid emails like `@`, `a@`, `@b`. Should use regex pattern. |
+| 3 | 🟡 Medium | [login_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/auth/viewmodel/login_viewmodel.dart#L104) | **Uses `print()` for error logging** — Should use `debugPrint()` for production safety. `print()` statements leak info in release builds. |
+| 4 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/auth/view/login_view.dart) | **Login view doesn't use LoginViewModel** — The view directly calls `Supabase.instance.client.auth.signInWithPassword()` instead of going through the ViewModel. The ViewModel with session logging/activity tracking is bypassed. |
+| 5 | 🟡 Medium | [orders_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/orders/view/orders_view.dart#L186-L188) | **Debug print statements left in production code** — Lines 187, 195, 241 use `print()` for debugging. |
+| 6 | 🟢 Low | [orders_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/orders/view/orders_view.dart#L653) | **Hardcoded text color** — Pagination "Showing X to Y" text uses `Colors.black` instead of theme-aware colors. Broken in dark mode. |
+
+### UI/UX Issues
+
+| # | Issue |
+|---|-------|
+| 1 | Login page references `assets/logo.png` — if missing, shows broken image |
+| 2 | Admin Shell/Sidebar navigation has 21+ routes — may feel overwhelming; consider grouping with sub-menus |
+| 3 | Orders table uses fixed `flex` column widths — may cause truncation on smaller screens |
+| 4 | Error page (`errorBuilder` in router) shows plain text "Page not found" — no styling or navigation back |
+
+### Missing Validations
+
+| # | Issue |
+|---|-------|
+| 1 | Password field has no minimum length validation |
+| 2 | No rate limiting on login attempts (client-side) |
+| 3 | [add_product_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/inventory/view/add_product_view.dart) accepts negative numbers for price and stock quantity (no min value validation) |
+| 4 | Order status update has no confirmation dialog — accidental clicks can change order state |
+
+### Suggested Enhancements
+
+- Move Supabase credentials to `.env` file (already partially done, but fallback exposes secrets)
+- Add [copyWith()](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/outlet/lib/features/auth/viewmodel/auth_viewmodel.dart#29-46) method to [OrderItem](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/orders/view/orders_view.dart#10-112) model to avoid manual field-by-field copying (line 215-232)
+- Separate model/state/notifier from [orders_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/orders/view/orders_view.dart) (1032 lines in one file with MVC mixed)
+- Add loading indicators per-row when updating order status
+- Add offline error handling / retry with exponential backoff
+
+---
+
+## 🟢 Application 2: User App
+
+### Modules Reviewed
+`auth` · `cart` · `home` · `address` · `map` · `notifications` · `offers` · `splash` · `subscription`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🔴 Critical | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#L115-L123) | **Hardcoded Supabase URL + anon key inline** — Embedded directly in [sendPhoneOtp()](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#111-144) and [verifyOtp()](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#145-213) methods using `String.fromEnvironment` with hardcoded defaults. |
+| 2 | 🔴 Critical | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#L261-L262) | **Sets `phone_verified: true` during Google Sign-In** — Phone is never verified during Google login, but profile is created with `phone_verified: true`. This is a data integrity bug. |
+| 3 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/view/login_view.dart#L433) | **Placeholder text "Name of the portal"** — Line 433 displays `"New to Name of the portal? "` instead of the actual app name. Should say "New to A+ Med App?". |
+| 4 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/view/login_view.dart#L437-L439) | **Uses `Navigator.push` instead of GoRouter** — The "Sign Up" link navigates using `Navigator.push(MaterialPageRoute(...))` while the rest of the app uses [GoRouter](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/core/router/app_router.dart#186-199). This bypasses route guards and creates inconsistent navigation behavior. |
+| 5 | 🟡 Medium | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#L233) | **Force-unwrap on `auth.currentUser!`** — After Google sign-in, `currentUser` is force-unwrapped without null check. If auth state isn't propagated immediately, this could crash. |
+| 6 | 🟡 Medium | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#L272-L273) | **Hardcoded address comparison** — `'Gandhi Nagar, CBE'` is hardcoded in source code to decide whether to update a user's address. |
+| 7 | 🟢 Low | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#L219-L220) | **Hardcoded Google OAuth Client ID** — The Google `serverClientId` is hardcoded. Should be in environment config. |
+
+### UI/UX Issues
+
+| # | Issue |
+|---|-------|
+| 1 | Login page has a hardcoded green `Color(0xFF00A86B)` that doesn't respect theme/admin settings |
+| 2 | Google Sign-In button uses a generic `Icons.g_mobiledata` icon instead of the official Google logo |
+| 3 | Mobile login layout has no scroll indicator — users may not realize form extends below the fold |
+| 4 | "Forgot Password" action doesn't validate email format before sending — only checks if empty |
+
+### Missing Validations
+
+| # | Issue |
+|---|-------|
+| 1 | Phone number validation only checks length (10 digits) — doesn't validate numeric-only input |
+| 2 | Password minimum is 6 characters — no uppercase/special character requirements (may be intentional for pharmacy customers) |
+| 3 | Signup doesn't validate that email isn't already registered before attempting signup |
+| 4 | No OTP resend cooldown timer visible to user |
+
+### Suggested Enhancements
+
+- Replace placeholder text "Name of the portal" with dynamic app name from settings
+- Use [GoRouter](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/core/router/app_router.dart#186-199) consistently for all navigation
+- Add proper Google logo asset for the sign-in button
+- Add biometric / fingerprint login option for returning users
+- Add profile completeness indicator post-signup
+
+---
+
+## 🔵 Application 3: Outlet App
+
+### Modules Reviewed
+`auth` · `customers` · `dashboard` · `devices` · `drivers` · `employees` · `expenses` · `grn` · `inventory` · `leaves` · `navigationbars` · `notifications` · `orders` · `profile` · `purchase_orders` · `vendors`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/outlet/lib/features/auth/view/login_view.dart#L177) | **Forgot Password is a TODO** — The "Forgot Password?" button has `// TODO: Implement forgot password` with no implementation. Users cannot recover their password. |
+| 2 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/outlet/lib/features/auth/view/login_view.dart#L118-L126) | **Weak email validation** — Only checks `contains('@')`. Same issue as Admin app. |
+| 3 | 🟢 Low | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/outlet/lib/features/auth/viewmodel/auth_viewmodel.dart#L88-L94) | **Initialization timeout uses magic delay** — 1500ms `Future.delayed` to determine if no session exists. On slow connections, this may show login prematurely while a session is still being restored. |
+| 4 | 🟢 Low | [auth_viewmodel.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/outlet/lib/features/auth/viewmodel/auth_viewmodel.dart#L50-L55) | **Auth subscription never disposed** — `_authSubscription` is created in [build()](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/main.dart#46-103) but the [Notifier](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/user/lib/features/auth/viewmodel/auth_viewmodel.dart#24-598) class has no dispose mechanism. Could cause memory leaks. |
+
+### UI/UX Issues
+
+| # | Issue |
+|---|-------|
+| 1 | Uses generic pharmacy icon instead of a branded logo |
+| 2 | Multi-step registration (documents, images, outlet info, staff) — no step progress indicator visible |
+| 3 | Signup flow goes to `/register` route if outlet not registered — no clear indication of what registration entails |
+
+### Missing Validations
+
+| # | Issue |
+|---|-------|
+| 1 | Forgot password is completely unimplemented |
+| 2 | No re-authentication required for sensitive operations (e.g., employee management) |
+| 3 | Registration model validation may not check all required document formats |
+
+### Suggested Enhancements
+
+- Implement forgot password functionality
+- Add registration progress stepper with clear visual indicators
+- Add outlet onboarding walkthrough for first-time users
+- Add document upload validation (file type, size limits)
+
+---
+
+## 🟠 Application 4: POS App
+
+### Modules Reviewed
+`auth` · `cart` · `checkout` · `draft_billing` · [pos](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/inventory/view/add_product_view.dart#120-132) · `products` · `reports` · `sales` · `settings` · `shared_cart`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🔴🔴 **CRITICAL** | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/features/auth/view/login_view.dart#L56) | **PLAINTEXT PASSWORD COMPARISON** — Line 56: `userResponse['password'] != password`. Passwords are stored in plaintext in the `employees` table and compared directly. This is a **severe security vulnerability**. All passwords are exposed if the database is compromised. Must use bcrypt/argon2 hashing. |
+| 2 | 🔴 Critical | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/features/auth/view/login_view.dart#L33-L34) | **Duplicate `_errorMessage` assignment** — Lines 33-34 both set `_errorMessage`, with line 34 overwriting line 33. Dead code. |
+| 3 | 🔴 Critical | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/features/auth/view/login_view.dart#L151-L152) | **Duplicate `labelText` property** — Lines 151-152 both set `labelText` on the same `InputDecoration`. Line 152 silently overwrites line 151. This is a Dart compile warning. |
+| 4 | 🔴 Critical | [main.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/main.dart#L24-L27) | **Hardcoded Supabase credentials** — URL and anon key directly in [main()](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/main.dart#15-41) with no `.env` file usage at all. |
+| 5 | 🟡 Medium | [main.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/main.dart#L220-L234) | **Session management via SharedPreferences only** — POS session is stored as a `pos_device_id` string in SharedPreferences. No Supabase auth session. A stolen device with cleared login but cached prefs gives access. |
+| 6 | 🟡 Medium | [login_view.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/features/auth/view/login_view.dart#L42-L46) | **SQL injection risk** — Employee lookup uses string interpolation in `.or()` filter: `'login_id.eq."$loginId",mobile.eq."$loginId"'`. While Supabase client SDK generally parameterizes queries, this pattern is fragile. |
+| 7 | 🟡 Medium | [main.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/pos/lib/main.dart#L53) | **Duplicate comment** — `// 2. Determine Effective Theme` appears twice (lines 52-53). |
+
+### UI/UX Issues
+
+| # | Issue |
+|---|-------|
+| 1 | Login uses [TextField](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/admin/lib/features/inventory/view/add_product_view.dart#1256-1286) instead of `TextFormField` — no form validation framework |
+| 2 | Error messages show raw exception text (`Connection Error: $e`) to end users |
+| 3 | No "Forgot Password" or any password recovery mechanism |
+| 4 | No logout button visible — unclear how employees sign out |
+| 5 | POS doesn't use GoRouter — entire app uses `Navigator.pushReplacement`. Loses consistent navigation |
+
+### Missing Validations
+
+| # | Issue |
+|---|-------|
+| 1 | No password hashing — stored and compared in plaintext |
+| 2 | No login attempt rate limiting |
+| 3 | No session expiry — once logged in via SharedPreferences, session persists indefinitely |
+| 4 | No role/permission check — any employee can access full POS regardless of role |
+| 5 | Employee ID field accepts any text with no format validation |
+
+### Suggested Enhancements
+
+- **URGENT**: Implement password hashing (bcrypt via Supabase Edge Function or server-side)
+- Use Supabase Auth instead of custom employees table authentication
+- Add session timeout for POS terminals
+- Add role-based access control per employee
+- Add terminal lock screen (for employee shift changes)
+- Implement audit trail for all POS transactions
+
+---
+
+## 🟣 Application 5: Delivery Partner App
+
+### Modules Reviewed
+`auth` · `home` · `navigation` · `order_request` · `orders` · `profile` · `tracking`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🟡 Medium | [login_screen.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#L379-L381) | **"Apply to be a Partner" button is a placeholder** — `onPressed` has empty body `{ // Placeholder — partner signup }`. Button is visible but does nothing. |
+| 2 | 🟡 Medium | [login_screen.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#L406-L408) | **"Need help logging in?" is a placeholder** — Same issue, empty `onPressed`. |
+| 3 | 🟡 Medium | [login_screen.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#L296-L312) | **Terms of Service and Privacy Policy links are non-clickable** — Displayed as styled `TextSpan` but have no `TapGestureRecognizer`. Users see colored text that looks clickable but isn't. |
+| 4 | 🟡 Medium | [login_screen.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#L75-L86) | **No phone number validation** — Only checks `phone.isNotEmpty`. Accepts letters, special characters, or single digits. No 10-digit validation. |
+| 5 | 🟢 Low | [auth_repository.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/data/auth_repository.dart#L32-L33) | **Throws raw string instead of Exception** — `throw e.message` throws a String, not an Exception. Inconsistent error handling pattern. |
+| 6 | 🟢 Low | [login_screen.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#L218) | **Empty hint text** — Phone field has `hintText: ''`. Should show placeholder like "Enter your mobile number". |
+
+### UI/UX Issues
+
+| # | Issue |
+|---|-------|
+| 1 | Login screen is hardcoded to white background — doesn't support dark mode |
+| 2 | Non-functional buttons ("Apply to be a Partner", "Need help") create poor user experience |
+| 3 | Decorative circle rings painter ([_CircleRingsPainter](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/presentation/screens/login_screen.dart#12-56)) draws circles partially outside the viewport |
+| 4 | Uses `Navigator.push` for OTP screen — inconsistent with any potential router setup |
+| 5 | Country code `+91` is hardcoded — no international support |
+
+### Missing Validations
+
+| # | Issue |
+|---|-------|
+| 1 | Phone number has no format/length validation |
+| 2 | OTP field may not validate 6-digit format |
+| 3 | Document upload ([uploadPartnerDocument](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/deliver_partner/lib/features/auth/data/auth_repository.dart#178-205)) has no file size or file type validation |
+| 4 | Vehicle number format not validated |
+
+### Suggested Enhancements
+
+- Implement partner signup flow or remove the button
+- Add actual Terms of Service and Privacy Policy screens with `TapGestureRecognizer`
+- Add phone number mask/formatting (10 digits, numeric only)
+- Add dark mode support
+- Implement "Need help" — link to support chat or FAQ
+
+---
+
+## ⚫ Application 6: Super Admin App
+
+### Modules Reviewed
+`activity_log` · `auth` · `banners` · `customer_analytics` · `dashboard` · `drivers` · `financial` · `inventory` · `kyc_documents` · `offers` · `orders` · `outlets` · `permissions` · `product_analytics` · `promo_codes` · `refunds` · `settings` · `subscription` · `terminals` · `users` · `vendors`
+
+### Bugs & Errors
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | 🔴 Critical | All files | **Near-identical codebase to Admin app** — The `super_admin` app is an almost exact copy of `admin` with 2,755 issues (vs Admin's 2,756). Both `super_admin/` and `super-admin/` directories exist, suggesting a duplication/migration issue. The `super-admin/` directory lacks a [pubspec.yaml](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/pubspec.yaml) and appears incomplete. |
+| 2 | 🔴 Critical | [main.dart](file:///Users/srinivasanp/Zenthink/Projects/pharmacy_management/apps/super_admin/lib/main.dart) | Same hardcoded Supabase credentials as Admin app |
+| 3 | 🟡 Medium | Entire codebase | All bugs identified in the Admin app apply identically to Super Admin |
+
+### UI/UX Issues
+
+Same as Admin app — see Application 1.
+
+### Suggested Enhancements
+
+- **Merge admin and super_admin into a single codebase** with role-based feature toggling
+- Remove the duplicate `super-admin/` directory
+- If separate access levels are required, use a shared package with role-based UI rendering
+
+---
+
+## Cross-Cutting Issues (All Apps)
+
+### 🔒 Security
+
+| # | Severity | Issue | Apps Affected |
+|---|----------|-------|---------------|
+| 1 | 🔴🔴 | **Plaintext passwords** in employees table | POS |
+| 2 | 🔴 | **Hardcoded Supabase credentials** in source code | All 6 apps |
+| 3 | 🔴 | **Hardcoded Google OAuth Client ID** | User |
+| 4 | 🟡 | **No client-side rate limiting** on auth attempts | All apps |
+| 5 | 🟡 | **`print()` statements** leak info in release builds | Admin, POS |
+
+### 📐 Architecture
+
+| # | Issue | Apps Affected |
+|---|-------|---------------|
+| 1 | Model + State + Notifier + View in single 1000+ line files | Admin, POS |
+| 2 | Mixed navigation (GoRouter + Navigator.push) | User, POS, Delivery |
+| 3 | Inconsistent auth patterns (Supabase Auth vs custom table) | POS uses employees table instead of Supabase Auth |
+| 4 | Super Admin is a fork of Admin instead of shared code | Admin, Super Admin |
+| 5 | No shared core package for common models/utilities | All apps |
+
+### 🎨 Deprecation Warnings (All Apps)
+
+| API | Replacement | Occurrences |
+|-----|------------|-------------|
+| `Color.withOpacity(x)` | `Color.withValues(alpha: x)` | ~500+ across all apps |
+| `DropdownButtonFormField(value: x)` | `DropdownButtonFormField(initialValue: x)` | ~50+ |
+| `Radio(groupValue: x, onChanged: y)` | `RadioGroup` widget | ~10+ in Admin/Super Admin |
+
+---
+
+## Priority Action Items
+
+```diff
++ [P0 - CRITICAL] Fix POS plaintext password storage — implement bcrypt hashing
++ [P0 - CRITICAL] Move ALL Supabase credentials to .env files
++ [P1 - HIGH] Implement Forgot Password in Outlet app
++ [P1 - HIGH] Fix "Name of the portal" placeholder in User app
++ [P1 - HIGH] Fix phone_verified=true bug in User Google Sign-In
++ [P1 - HIGH] Fix duplicate property assignments in POS login_view.dart
++ [P2 - MEDIUM] Implement placeholder buttons in Delivery Partner app
++ [P2 - MEDIUM] Add proper phone/email validation across all apps
++ [P2 - MEDIUM] Make Terms of Service links clickable in Delivery Partner
++ [P2 - MEDIUM] Merge Admin and Super Admin into shared codebase
++ [P3 - LOW] Replace all withOpacity() calls with withValues()
++ [P3 - LOW] Replace print() with debugPrint() across all apps
++ [P3 - LOW] Refactor large single-file modules into proper MVC structure
+```

@@ -14,6 +14,7 @@ const ManageSlots = () => {
     const [newSlot, setNewSlot] = useState({ slot_time: '', max_tokens: 10 });
     const [holidayForm, setHolidayForm] = useState({ date: '', reason: '' });
     const [saving, setSaving] = useState(false);
+    const [editModal, setEditModal] = useState({ show: false, slot: null, max_tokens: 10 });
 
     useEffect(() => {
         getDepartments(false).then(setDepartments);
@@ -207,6 +208,12 @@ const ManageSlots = () => {
                                                     />
                                                 </div>
                                                 <button
+                                                    onClick={() => setEditModal({ show: true, slot, max_tokens: slot.max_tokens })}
+                                                    className="text-xs px-3 py-1 rounded-lg bg-gov-light text-gov-blue hover:bg-blue-100 font-medium transition-colors"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
                                                     onClick={() => handleToggleBlock(slot)}
                                                     className={`text-xs px-3 py-1 rounded-lg font-medium transition-colors ${slot.isBlocked ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
                                                 >
@@ -287,6 +294,62 @@ const ManageSlots = () => {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+            {/* Edit Slot Modal */}
+            {editModal.show && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 max-w-sm w-full animate-slide-up">
+                        <div className="flex items-start gap-3 mb-6">
+                            <div className="w-10 h-10 bg-gov-light rounded-full flex items-center justify-center shrink-0">
+                                <span className="text-gov-blue text-lg">🕐</span>
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gov-navy text-base">Edit Slot Capacity</h3>
+                                <p className="text-gray-500 text-xs mt-1">Adjust max tokens for <b>{editModal.slot?.slot_time}</b></p>
+                            </div>
+                        </div>
+                        
+                        <div className="mb-6">
+                            <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Maximum Tokens</label>
+                            <input 
+                                type="number" 
+                                value={editModal.max_tokens}
+                                onChange={e => setEditModal(p => ({ ...p, max_tokens: e.target.value }))}
+                                min="1" max="100"
+                                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-lg font-bold text-gov-navy focus:outline-none focus:ring-2 focus:ring-gov-blue"
+                            />
+                        </div>
+
+                        <div className="flex gap-3 justify-end text-sm">
+                            <button 
+                                onClick={() => setEditModal({ show: false, slot: null, max_tokens: 10 })}
+                                className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-xl font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        const newMax = Number(editModal.max_tokens);
+                                        const newIsBlocked = (editModal.slot.booked_count || 0) >= newMax;
+                                        await updateSlot(editModal.slot.id, { 
+                                            max_tokens: newMax,
+                                            isBlocked: newIsBlocked
+                                        });
+                                        setSlots(slots.map(s => s.id === editModal.slot.id ? { ...s, max_tokens: newMax, isBlocked: newIsBlocked } : s));
+                                        toast.success('Capacity & Status updated');
+                                        setEditModal({ show: false, slot: null, max_tokens: 10 });
+                                    } catch {
+                                        toast.error('Update failed');
+                                    }
+                                }}
+                                className="flex-1 px-4 py-2.5 bg-gov-navy hover:bg-gov-blue text-white rounded-xl font-semibold transition-colors shadow-md shadow-blue-900/10"
+                            >
+                                Save Changes
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

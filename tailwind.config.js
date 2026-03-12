@@ -6,46 +6,42 @@ export default {
     ],
     theme: {
         extend: {
-            fontFamily: {
-                sans: ['Inter', 'sans-serif'],
-            },
             colors: {
-                primary: {
-                    50: '#eff6ff',
-                    100: '#dbeafe',
-                    200: '#bfdbfe',
-                    300: '#93c5fd',
-                    400: '#60a5fa',
-                    500: '#3b82f6',
-                    600: '#2563eb',
-                    700: '#1d4ed8',
-                    800: '#1e40af',
-                    900: '#1e3a8a',
-                    950: '#172554',
-                },
-                gov: {
-                    navy: '#0f2557',
-                    blue: '#1a3a8f',
-                    gold: '#d4a017',
-                    light: '#f0f4ff',
-                },
+                'gov-navy': '#1c1917',
+                'gov-blue': '#c25a30',
+                'gov-gold': '#c49a2c',
+                'gov-light': '#f5f2ec',
+                'gov-cream': '#f5f2ec',
+                'gov-sage': '#d4ddd0',
+                'gov-sage-light': '#e8ede5',
+                'gov-card': '#ffffff',
+                'gov-border': '#d4ddd0',
+                'gov-coral': '#d4613a',
+                'gov-text': '#1c1917',
+                'gov-muted': '#6b6860',
+                'gov-subtle': '#9c978f',
+                'gov-bg': '#f0ede6',
+            },
+            fontFamily: {
+                'display': ['"DM Serif Display"', 'Georgia', 'serif'],
+                'body': ['"DM Sans"', 'system-ui', 'sans-serif'],
             },
             animation: {
-                'fade-in': 'fadeIn 0.5s ease-in-out',
-                'slide-up': 'slideUp 0.4s ease-out',
+                'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                'fade-in': 'fadeIn 0.6s ease-out',
                 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             },
             keyframes: {
-                fadeIn: {
-                    '0%': { opacity: '0' },
-                    '100%': { opacity: '1' },
-                },
                 slideUp: {
                     '0%': { opacity: '0', transform: 'translateY(20px)' },
                     '100%': { opacity: '1', transform: 'translateY(0)' },
+                },
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
                 },
             },
         },
     },
     plugins: [],
-}
+};

@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { getDepartments } from '../firebase/firestore';
 import { format } from 'date-fns';
+import { Radio, AlertTriangle, CheckCircle, Landmark } from 'lucide-react';
 
 const LiveTokenScreen = () => {
     const [departments, setDepartments] = useState([]);
@@ -10,142 +11,98 @@ const LiveTokenScreen = () => {
     const [calledTokens, setCalledTokens] = useState([]);
     const [blink, setBlink] = useState(false);
     const [time, setTime] = useState(new Date());
+    const [liveError, setLiveError] = useState(null);
+    const [totalServedToday, setTotalServedToday] = useState(0);
     const prevTokenRef = useRef(null);
 
-    // Live clock
-    useEffect(() => {
-        const t = setInterval(() => setTime(new Date()), 1000);
-        return () => clearInterval(t);
-    }, []);
+    useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+    useEffect(() => { getDepartments().then(d => setDepartments(d)).catch(() => { }); }, []);
 
-    // Load departments
-    useEffect(() => {
-        getDepartments().then(d => setDepartments(d)).catch(() => { });
-    }, []);
-
-    // Subscribe to ALL called tokens today
     useEffect(() => {
         const today = format(new Date(), 'yyyy-MM-dd');
-        const constraints = [
-            where('status', '==', 'called'),
-            where('booking_date', '==', today),
-        ];
-        if (selectedDept !== 'all') {
-            constraints.push(where('department_id', '==', selectedDept));
-        }
-        const q = query(collection(db, 'tokens'), ...constraints);
+        const q = query(collection(db, 'tokens'), where('booking_date', '==', today));
+        return onSnapshot(q, s => setTotalServedToday(s.docs.map(d => d.data()).filter(t => t.status === 'completed').length), () => { });
+    }, []);
 
-        const unsub = onSnapshot(q, (snap) => {
-            const tokens = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => {
-                    const ta = a.updatedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
-                    const tb = b.updatedAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0;
-                    return tb - ta; // newest first
-                });
-
-            // Blink on new token
+    useEffect(() => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const c = [where('status', '==', 'called'), where('booking_date', '==', today)];
+        if (selectedDept !== 'all') c.push(where('department_id', '==', selectedDept));
+        return onSnapshot(query(collection(db, 'tokens'), ...c), snap => {
+            setLiveError(null);
+            const tokens = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.updatedAt?.toMillis?.() ?? 0) - (a.updatedAt?.toMillis?.() ?? 0));
             const latest = tokens[0]?.token_number;
             if (latest && latest !== prevTokenRef.current) {
-                prevTokenRef.current = latest;
-                setBlink(true);
-                setTimeout(() => setBlink(false), 1200);
+                prevTokenRef.current = latest; setBlink(true);
+                try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type = 'sine'; o.frequency.setValueAtTime(880, ctx.currentTime); o.frequency.setValueAtTime(1100, ctx.currentTime + 0.15); g.gain.setValueAtTime(0.3, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.5); } catch { }
+                setTimeout(() => setBlink(false), 2000);
             }
             setCalledTokens(tokens);
-        });
-
-        return unsub;
+        }, err => setLiveError(err.code === 'permission-denied' ? 'Firestore rules deny reads.' : err.message));
     }, [selectedDept]);
 
     const latestToken = calledTokens[0] || null;
-    const deptName = selectedDept === 'all'
-        ? 'All Departments'
-        : departments.find(d => d.id === selectedDept)?.department_name || '';
+    const deptName = selectedDept === 'all' ? 'All Departments' : departments.find(d => d.id === selectedDept)?.department_name || '';
 
     return (
-        <div className="min-h-[calc(100vh-64px)] bg-gov-navy flex flex-col">
-            {/* Header */}
-            <div className="bg-black/20 px-6 py-4 flex items-center justify-between border-b border-white/10 flex-wrap gap-3">
+        <div className="min-h-[calc(100vh-64px)] flex flex-col" style={{ backgroundColor: '#1c1917' }}>
+            <div className="px-6 py-4 flex items-center justify-between flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(212,221,208,0.1)' }}>
                 <div>
-                    <p className="text-white/60 text-xs uppercase tracking-widest">Government of Tamil Nadu</p>
-                    <p className="text-white font-bold text-xl">Digital Token Display</p>
+                    <p className="text-xs uppercase tracking-widest" style={{ color: '#9c978f' }}>Government of Tamil Nadu</p>
+                    <p className="font-bold text-xl" style={{ color: '#f5f2ec' }}>Digital Token Display</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    {/* Clock */}
-                    <div className="text-right">
-                        <p className="text-gov-gold font-mono text-2xl font-bold">
-                            {format(time, 'hh:mm:ss a')}
-                        </p>
-                        <p className="text-white/50 text-xs">{format(time, 'EEEE, dd MMM yyyy')}</p>
-                    </div>
-                    {/* Department filter */}
-                    <select
-                        value={selectedDept}
-                        onChange={e => setSelectedDept(e.target.value)}
-                        className="bg-white/10 border border-white/20 text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gov-gold"
-                    >
-                        <option value="all" className="bg-gov-navy">All Departments</option>
-                        {departments.map(d => (
-                            <option key={d.id} value={d.id} className="bg-gov-navy">{d.department_name}</option>
-                        ))}
+                    <div className="text-right"><p className="font-mono text-2xl font-bold" style={{ color: '#d4613a' }}>{format(time, 'hh:mm:ss a')}</p><p className="text-xs" style={{ color: '#9c978f' }}>{format(time, 'EEEE, dd MMM yyyy')}</p></div>
+                    <select value={selectedDept} onChange={e => setSelectedDept(e.target.value)} className="text-sm rounded-full px-3 py-2 focus:outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(212,221,208,0.2)', color: '#f5f2ec' }}>
+                        <option value="all">All Departments</option>{departments.map(d => <option key={d.id} value={d.id}>{d.department_name}</option>)}
                     </select>
-                    {/* Live badge */}
-                    <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-red-400 text-xs font-bold uppercase tracking-wide">LIVE</span>
-                    </div>
+                    <div className="flex items-center gap-1.5"><Radio size={12} className="text-red-500 animate-pulse" /><span className="text-red-400 text-xs font-bold uppercase">LIVE</span></div>
                 </div>
             </div>
 
-            {/* Main display */}
-            <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-                <p className="text-blue-300 text-sm font-semibold mb-1 uppercase tracking-widest">Now Serving</p>
-                <p className="text-white/40 text-sm mb-8">{deptName}</p>
+            {liveError && <div className="px-6 py-3 text-center flex items-center justify-center gap-2" style={{ backgroundColor: 'rgba(220,38,38,0.15)', borderBottom: '1px solid rgba(220,38,38,0.2)' }}><AlertTriangle size={14} style={{ color: '#fca5a5' }} /><p className="text-sm" style={{ color: '#fca5a5' }}>{liveError}</p></div>}
 
-                {/* Primary token display */}
-                <div className={`transition-all duration-300 ${blink ? 'scale-110' : 'scale-100'}`}>
+            <div className="px-6 py-2.5 flex items-center justify-center gap-8 flex-wrap" style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(212,221,208,0.08)' }}>
+                <div className="flex items-center gap-2"><Radio size={8} className="text-red-500 animate-pulse" /><span className="text-xs uppercase tracking-wide" style={{ color: '#9c978f' }}>Called</span><span className="font-bold text-sm" style={{ color: '#f5f2ec' }}>{calledTokens.length}</span></div>
+                <div className="flex items-center gap-2"><CheckCircle size={12} style={{ color: '#10b981' }} /><span className="text-xs uppercase tracking-wide" style={{ color: '#9c978f' }}>Served Today</span><span className="font-bold text-sm" style={{ color: '#10b981' }}>{totalServedToday}</span></div>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+                <p className="text-sm font-semibold mb-1 uppercase tracking-widest" style={{ color: '#d4613a' }}>Now Serving</p>
+                <p className="text-sm mb-8" style={{ color: '#9c978f' }}>{deptName}</p>
+                <div className={`transition-all duration-500 ease-out ${blink ? 'scale-110' : 'scale-100'}`}>
                     {latestToken ? (
                         <div className="text-center">
-                            <div className={`border-4 rounded-3xl px-16 py-10 shadow-2xl backdrop-blur-sm mb-6 transition-colors duration-500 ${blink ? 'bg-gov-gold/20 border-gov-gold' : 'bg-white/10 border-gov-gold'}`}>
-                                <p className={`text-7xl sm:text-9xl font-extrabold tracking-wider leading-none transition-colors ${blink ? 'text-white' : 'text-gov-gold'}`}>
-                                    {latestToken.token_number}
-                                </p>
+                            <div className="relative rounded-3xl px-16 py-10 mb-6 transition-all duration-700"
+                                style={{ border: blink ? '2px solid #d4613a' : '2px solid rgba(212,221,208,0.2)', backgroundColor: blink ? 'rgba(212,97,58,0.08)' : 'rgba(255,255,255,0.03)', boxShadow: blink ? '0 0 80px rgba(212,97,58,0.15)' : 'none' }}>
+                                {blink && <div className="absolute inset-0 rounded-3xl animate-ping pointer-events-none" style={{ border: '2px solid rgba(212,97,58,0.3)' }} />}
+                                <p className="text-7xl sm:text-9xl font-bold leading-none transition-colors duration-500" style={{ color: blink ? '#d4613a' : '#f5f2ec' }}>{latestToken.token_number}</p>
                             </div>
                             <div className="flex gap-8 justify-center flex-wrap">
-                                <div className="text-center">
-                                    <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Citizen</p>
-                                    <p className="text-white font-semibold">{latestToken.user_name}</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Department</p>
-                                    <p className="text-white font-semibold">{latestToken.department_name}</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Time Slot</p>
-                                    <p className="text-white font-semibold">{latestToken.slot_time}</p>
-                                </div>
+                                {[{ l: 'Citizen', v: latestToken.user_name }, { l: 'Department', v: latestToken.department_name }, { l: 'Time Slot', v: latestToken.slot_time }].map(item => (
+                                    <div key={item.l} className="text-center"><p className="text-xs uppercase tracking-wide mb-1" style={{ color: '#9c978f' }}>{item.l}</p><p className="font-semibold text-lg" style={{ color: '#f5f2ec' }}>{item.v}</p></div>
+                                ))}
                             </div>
                         </div>
                     ) : (
                         <div className="text-center">
-                            <div className="bg-white/5 border-2 border-white/10 rounded-3xl px-16 py-10 mb-6">
-                                <p className="text-white/20 text-7xl sm:text-9xl font-extrabold tracking-wider leading-none">– – –</p>
+                            <div className="rounded-3xl px-16 py-10 mb-6" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(212,221,208,0.1)' }}>
+                                <p className="text-7xl sm:text-9xl font-bold leading-none" style={{ color: 'rgba(212,221,208,0.2)' }}>– – –</p>
                             </div>
-                            <p className="text-white/40 text-lg">Waiting for token calls...</p>
-                            <p className="text-white/20 text-sm mt-1">Admin will call tokens from the dashboard</p>
+                            <p className="text-lg" style={{ color: '#9c978f' }}>Waiting for token calls...</p>
                         </div>
                     )}
                 </div>
 
-                {/* Recent called tokens grid (if multiple) */}
                 {calledTokens.length > 1 && (
-                    <div className="mt-12 w-full max-w-2xl">
-                        <p className="text-white/30 text-xs uppercase tracking-widest text-center mb-3">Also Called</p>
-                        <div className="flex gap-3 justify-center flex-wrap">
-                            {calledTokens.slice(1, 5).map(t => (
-                                <div key={t.id} className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
-                                    <p className="text-gov-gold font-bold text-xl">{t.token_number}</p>
-                                    <p className="text-white/40 text-xs mt-0.5">{t.department_name}</p>
+                    <div className="mt-12 w-full max-w-3xl">
+                        <p className="text-xs uppercase tracking-widest text-center mb-4" style={{ color: '#9c978f' }}>Also Called</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {calledTokens.slice(1, 9).map(t => (
+                                <div key={t.id} className="rounded-3xl px-4 py-3 text-center" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,221,208,0.1)' }}>
+                                    <p className="font-bold text-2xl" style={{ color: '#d4613a' }}>{t.token_number}</p>
+                                    <p className="text-sm mt-1 font-medium" style={{ color: 'rgba(245,242,236,0.6)' }}>{t.user_name}</p>
+                                    <p className="text-xs mt-0.5" style={{ color: '#9c978f' }}>{t.department_name}</p>
                                 </div>
                             ))}
                         </div>
@@ -153,17 +110,17 @@ const LiveTokenScreen = () => {
                 )}
             </div>
 
-            {/* Footer ticker */}
-            <div className="bg-gov-gold py-2.5 overflow-hidden">
-                <div className="whitespace-nowrap">
-                    <span className="text-gov-navy font-bold text-sm px-8 inline-block">
-                        🏛 Welcome to Government of Tamil Nadu Digital Token System &nbsp;·&nbsp;
+            <div className="py-2.5 overflow-hidden" style={{ backgroundColor: '#d4613a' }}>
+                <div className="whitespace-nowrap animate-marquee">
+                    <span className="text-white font-bold text-sm px-8 inline-block">
+                        <Landmark size={14} className="inline mr-1" /> Welcome to Government of Tamil Nadu Digital Token System &nbsp;·&nbsp;
                         Please arrive 10 minutes before your scheduled slot &nbsp;·&nbsp;
                         Carry your token PDF and a valid ID proof &nbsp;·&nbsp;
-                        Token calls are managed by the department counter staff
+                        {totalServedToday > 0 ? `${totalServedToday} citizens served today` : 'Service begins shortly'}
                     </span>
                 </div>
             </div>
+            <style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}.animate-marquee{animation:marquee 30s linear infinite}`}</style>
         </div>
     );
 };
