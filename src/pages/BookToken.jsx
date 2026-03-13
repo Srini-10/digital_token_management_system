@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { getDepartments, getSlotsForDepartmentDate, getHolidays, bookToken } from '../firebase/firestore';
 import { autoSeedIfEmpty } from '../firebase/seedData';
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
-import { Ticket, Building2, ClipboardList, MapPin, CheckCircle, Sprout, Loader2, ChevronLeft, Minus } from 'lucide-react';
+import { Ticket, Building2, ClipboardList, MapPin, CheckCircle, Check, Sprout, Loader2, ChevronLeft, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
