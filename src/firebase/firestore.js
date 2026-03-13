@@ -97,7 +97,6 @@ export const getSlotsForDepartmentDate = async (departmentId, date) => {
     );
     const snap = await getDocs(q);
 
-    // If no slots exist for this date, AUTO-GENERATE them instantly
     if (snap.empty) {
         console.log(`No slots found for ${date}. Auto-generating default slots...`);
         const batch = writeBatch(db);
@@ -119,10 +118,9 @@ export const getSlotsForDepartmentDate = async (departmentId, date) => {
         });
 
         await batch.commit();
-        return newSlots; // return newly created slots to the UI
+        return newSlots;
     }
 
-    // Sort client-side — avoids needing a composite index
     return snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.slot_time > b.slot_time ? 1 : -1));
@@ -171,11 +169,21 @@ export const deleteHoliday = async (id) => {
  * Generates token number: DEPT-YEAR-NNN
  * Increments slot booked_count atomically.
  */
-export const bookToken = async ({ userId, departmentId, slotId, departmentCode, userName, departmentName, slotTime, date }) => {
+export const bookToken = async ({
+    userId,
+    departmentId,
+    slotId,
+    departmentCode,
+    userName,
+    departmentName,
+    officeLocation,   // ← ADDED
+    subdivision,      // ← ADDED
+    slotTime,
+    date
+}) => {
     const slotRef = doc(db, 'slots', slotId);
     const year = new Date().getFullYear();
 
-    // Get today's token count for this department
     const todayQ = query(
         collection(db, 'tokens'),
         where('department_id', '==', departmentId),
@@ -190,7 +198,6 @@ export const bookToken = async ({ userId, departmentId, slotId, departmentCode, 
         if (slotData.isBlocked) throw new Error('This slot is blocked.');
         if (slotData.booked_count >= slotData.max_tokens) throw new Error('Slot is fully booked.');
 
-        // Count existing tokens for department+date to generate serial number
         const existingSnap = await getDocs(todayQ);
         const serialNumber = String(existingSnap.size + 1).padStart(3, '0');
         const tokenNumber = `${departmentCode.toUpperCase()}-${year}-${serialNumber}`;
@@ -203,6 +210,8 @@ export const bookToken = async ({ userId, departmentId, slotId, departmentCode, 
             user_name: userName,
             department_id: departmentId,
             department_name: departmentName,
+            office_location: officeLocation || null,   // ← ADDED
+            subdivision: subdivision || null,           // ← ADDED
             slot_id: slotId,
             slot_time: slotTime,
             token_number: tokenNumber,
@@ -231,7 +240,6 @@ export const getUserTokens = async (userId) => {
     const snap = await getDocs(q);
     return snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        // Sort newest first client-side — avoids composite index requirement
         .sort((a, b) => {
             const ta = a.createdAt?.toMillis?.() ?? 0;
             const tb = b.createdAt?.toMillis?.() ?? 0;
@@ -241,7 +249,6 @@ export const getUserTokens = async (userId) => {
 
 /** Real-time listener for today's tokens (admin) */
 export const subscribeToTodayTokens = (date, departmentId, callback) => {
-    // Build query without orderBy to avoid composite index requirement
     let constraints = [where('booking_date', '==', date)];
     if (departmentId) constraints.push(where('department_id', '==', departmentId));
     const q = query(collection(db, 'tokens'), ...constraints);
@@ -267,7 +274,6 @@ export const subscribeToCalledToken = (departmentId, callback) => {
     return onSnapshot(q, (snap) => {
         const tokens = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
-            // Most recently updated first — sort by updatedAt client-side
             .sort((a, b) => {
                 const ta = a.updatedAt?.toMillis?.() ?? 0;
                 const tb = b.updatedAt?.toMillis?.() ?? 0;
@@ -290,8 +296,7 @@ export const updateTokenStatus = async (tokenId, status) => {
  * Returns minutes since midnight for easy numeric comparison.
  */
 const parseSlotStartMinutes = (slotTime) => {
-    if (!slotTime) return Infinity; // push tokens without slot_time to the end
-    // Extract the start portion: "09:00 AM" from "09:00 AM - 09:30 AM"
+    if (!slotTime) return Infinity;
     const start = slotTime.split(' - ')[0]?.trim();
     if (!start) return Infinity;
 
@@ -310,13 +315,9 @@ const parseSlotStartMinutes = (slotTime) => {
 
 /**
  * Call the next pending token in the queue.
- * Always uses the current date. Sorts by slot time (earliest first),
- * then by createdAt within the same slot so the queue order matches
- * the citizen's booked time window.
- * Returns null if no pending tokens exist.
+ * Sorts by slot time (earliest first), then by createdAt within same slot.
  */
 export const callNextToken = async (date = null, departmentId = null) => {
-    // Always enforce current date
     const today = new Date();
     const currentDate = date || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -333,14 +334,12 @@ export const callNextToken = async (date = null, departmentId = null) => {
 
     if (snap.empty) return null;
 
-    // Sort by: 1) slot_time earliest first  2) createdAt oldest first (within same slot)
     const pending = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => {
             const slotA = parseSlotStartMinutes(a.slot_time);
             const slotB = parseSlotStartMinutes(b.slot_time);
             if (slotA !== slotB) return slotA - slotB;
-            // Same slot — respect booking order
             const ta = a.createdAt?.toMillis?.() ?? 0;
             const tb = b.createdAt?.toMillis?.() ?? 0;
             return ta - tb;
@@ -348,7 +347,6 @@ export const callNextToken = async (date = null, departmentId = null) => {
 
     const next = pending[0];
 
-    // Update status to 'called'
     await updateDoc(doc(db, 'tokens', next.id), {
         status: 'called',
         updatedAt: serverTimestamp(),
@@ -377,7 +375,6 @@ export const cancelToken = async (tokenId, slotId) => {
 
 /** Get all tokens for analytics */
 export const getTokensByDateRange = async (startDate, endDate) => {
-    // Use only range filters — no orderBy to avoid composite index
     const q = query(
         collection(db, 'tokens'),
         where('booking_date', '>=', startDate),

@@ -27,12 +27,30 @@ const BookToken = () => {
     const isHoliday = (d) => holidays.includes(d);
     const handleDateSelect = (d) => { if (isHoliday(d)) { toast.error('Holiday.'); return; } setSelectedDate(d); setSelectedSlot(null); };
     const handleSeedData = async () => { setSeeding(true); try { await autoSeedIfEmpty(); await loadDepartments(); toast.success('Loaded!'); } catch (e) { toast.error('Failed'); } finally { setSeeding(false); } };
+
     const handleBook = async () => {
         if (!selectedDept || !selectedDate || !selectedSlot) { toast.error('Complete all selections'); return; }
         setBooking(true);
-        try { const r = await bookToken({ userId: currentUser.uid, departmentId: selectedDept.id, slotId: selectedSlot.id, departmentCode: selectedDept.department_name.split(' ')[0].substring(0, 3).toUpperCase(), userName: userProfile?.name || currentUser.displayName, departmentName: selectedDept.department_name, subdivision: selectedSubdivision || null, slotTime: selectedSlot.slot_time, date: selectedDate }); setBookedToken(r); toast.success(`Booked! ${r.tokenNumber}`); setStep(4); }
+        try {
+            const r = await bookToken({
+                userId: currentUser.uid,
+                departmentId: selectedDept.id,
+                slotId: selectedSlot.id,
+                departmentCode: selectedDept.department_name.split(' ')[0].substring(0, 3).toUpperCase(),
+                userName: userProfile?.name || currentUser.displayName,
+                departmentName: selectedDept.department_name,
+                officeLocation: selectedDept.office_location,   // ← ADDED
+                subdivision: selectedSubdivision || null,
+                slotTime: selectedSlot.slot_time,
+                date: selectedDate
+            });
+            setBookedToken(r);
+            toast.success(`Booked! ${r.tokenNumber}`);
+            setStep(4);
+        }
         catch (e) { toast.error(e.message || 'Failed.'); } finally { setBooking(false); }
     };
+
     const cardStyle = { backgroundColor: '#ffffff', border: '1px solid #d4ddd0' };
     const inputStyle = { backgroundColor: '#f0ede6', border: '1px solid #d4ddd0', color: '#1c1917' };
 
@@ -46,6 +64,7 @@ const BookToken = () => {
                     <p className="text-sm mb-1" style={{ color: '#9c978f' }}>Your Token Number</p>
                     <p className="text-3xl font-bold" style={{ color: '#d4613a' }}>{bookedToken.tokenNumber}</p>
                     <p className="text-sm mt-3" style={{ color: '#6b6860' }}>{selectedDept?.department_name}</p>
+                    {selectedDept?.office_location && <p className="text-xs mt-0.5 flex items-center justify-center gap-1" style={{ color: '#9c978f' }}><MapPin size={12} /> {selectedDept.office_location}</p>}
                     {selectedSubdivision && <p className="text-xs mt-0.5 flex items-center justify-center gap-1" style={{ color: '#d4613a' }}><ClipboardList size={12} /> {selectedSubdivision}</p>}
                     <p className="text-sm font-medium mt-1" style={{ color: '#1c1917' }}>{selectedDate} · {selectedSlot?.slot_time}</p>
                 </div>
@@ -122,8 +141,19 @@ const BookToken = () => {
                     <button onClick={() => setStep(2)} className="text-sm mb-5 block hover:underline flex items-center gap-1" style={{ color: '#d4613a' }}><ChevronLeft size={14} /> Back</button>
                     <div className="rounded-3xl p-6 mb-6" style={cardStyle}>
                         <h2 className="text-lg font-bold mb-4" style={{ color: '#1c1917' }}>Booking Summary</h2>
-                        {[{ l: 'Department', v: selectedDept?.department_name }, ...(selectedSubdivision ? [{ l: 'Service', v: selectedSubdivision }] : []), { l: 'Location', v: selectedDept?.office_location }, { l: 'Date', v: selectedDate }, { l: 'Time Slot', v: selectedSlot?.slot_time }, { l: 'Citizen', v: userProfile?.name }].map(r => (
-                            <div key={r.l} className="flex justify-between py-2.5" style={{ borderBottom: '1px solid #e8ede5' }}><span className="text-sm" style={{ color: '#6b6860' }}>{r.l}</span><span className="font-medium text-sm text-right max-w-48" style={{ color: '#1c1917' }}>{r.v}</span></div>))}
+                        {[
+                            { l: 'Department', v: selectedDept?.department_name },
+                            ...(selectedSubdivision ? [{ l: 'Service', v: selectedSubdivision }] : []),
+                            { l: 'Location', v: selectedDept?.office_location },
+                            { l: 'Date', v: selectedDate },
+                            { l: 'Time Slot', v: selectedSlot?.slot_time },
+                            { l: 'Citizen', v: userProfile?.name }
+                        ].map(r => (
+                            <div key={r.l} className="flex justify-between py-2.5" style={{ borderBottom: '1px solid #e8ede5' }}>
+                                <span className="text-sm" style={{ color: '#6b6860' }}>{r.l}</span>
+                                <span className="font-medium text-sm text-right max-w-48" style={{ color: '#1c1917' }}>{r.v}</span>
+                            </div>
+                        ))}
                     </div>
                     <button onClick={handleBook} disabled={booking} className="w-full text-white font-bold py-3.5 rounded-full flex items-center justify-center gap-2 disabled:opacity-50"
                         style={{ backgroundColor: '#d4613a' }}>{booking ? <><Loader2 size={16} className="animate-spin" /> Booking...</> : <><Ticket size={16} /> Confirm & Book Token</>}</button>
